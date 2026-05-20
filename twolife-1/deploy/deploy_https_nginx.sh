@@ -11,6 +11,8 @@ EMAIL=""
 APP_PORT="3000"
 APP_DIR="/opt/twolife"
 NODE_ENV="production"
+BACKUP_DIR="/var/backups/twolife"
+BACKUP_RETENTION_DAYS="14"
 
 usage() {
   cat <<USAGE
@@ -70,11 +72,23 @@ if [[ ! -f "$APP_DIR/package.json" ]]; then
 else
   echo "==> 增量部署：同步最新代码到 $APP_DIR"
 fi
-rsync -a --delete --exclude node_modules --exclude dist "$SRC_DIR/" "$APP_DIR/"
+rsync -a --delete \
+  --exclude node_modules \
+  --exclude dist \
+  --exclude uploads \
+  --exclude database.sqlite \
+  --exclude database.sqlite-shm \
+  --exclude database.sqlite-wal \
+  --exclude .env \
+  "$SRC_DIR/" "$APP_DIR/"
 
 cd "$APP_DIR"
 mkdir -p "$APP_DIR/uploads"
 chmod 775 "$APP_DIR/uploads"
+
+if [[ -f "$APP_DIR/database.sqlite" ]]; then
+  echo "==> 检测到现有数据库，已保留历史数据"
+fi
 
 echo "==> 安装并构建项目..."
 npm install
@@ -84,6 +98,75 @@ if [[ ! -f .env ]]; then
   echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
   echo "已创建 .env"
 fi
+
+echo "==> 配置自动备份..."
+mkdir -p "$BACKUP_DIR"
+
+cat > /usr/local/bin/twolife_backup.sh <<BACKUP
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_DIR="$APP_DIR"
+BACKUP_DIR="$BACKUP_DIR"
+RETENTION_DAYS="$BACKUP_RETENTION_DAYS"
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+TMP_DIR="$(mktemp -d)"
+ARCHIVE_PATH="$BACKUP_DIR/twolife_backup_${TIMESTAMP}.tar.gz"
+
+cleanup() {
+  rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
+mkdir -p "$BACKUP_DIR"
+
+if [[ -f "$APP_DIR/database.sqlite" ]]; then
+  cp "$APP_DIR/database.sqlite" "$TMP_DIR/database.sqlite"
+fi
+if [[ -f "$APP_DIR/database.sqlite-shm" ]]; then
+  cp "$APP_DIR/database.sqlite-shm" "$TMP_DIR/database.sqlite-shm"
+fi
+if [[ -f "$APP_DIR/database.sqlite-wal" ]]; then
+  cp "$APP_DIR/database.sqlite-wal" "$TMP_DIR/database.sqlite-wal"
+fi
+if [[ -f "$APP_DIR/.env" ]]; then
+  cp "$APP_DIR/.env" "$TMP_DIR/.env"
+fi
+if [[ -d "$APP_DIR/uploads" ]]; then
+  cp -a "$APP_DIR/uploads" "$TMP_DIR/uploads"
+fi
+
+tar -czf "$ARCHIVE_PATH" -C "$TMP_DIR" .
+find "$BACKUP_DIR" -maxdepth 1 -type f -name 'twolife_backup_*.tar.gz' -mtime +"$RETENTION_DAYS" -delete
+
+echo "Backup created: $ARCHIVE_PATH"
+BACKUP
+
+chmod +x /usr/local/bin/twolife_backup.sh
+
+cat > /etc/systemd/system/twolife-backup.service <<SERVICE
+[Unit]
+Description=TwoLife Backup Service
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/twolife_backup.sh
+User=root
+SERVICE
+
+cat > /etc/systemd/system/twolife-backup.timer <<TIMER
+[Unit]
+Description=Run TwoLife backup daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=twolife-backup.service
+
+[Install]
+WantedBy=timers.target
+TIMER
 
 echo "==> 配置 systemd 服务..."
 cat > /etc/systemd/system/twolife.service <<SERVICE
@@ -110,6 +193,7 @@ SERVICE
 systemctl daemon-reload
 systemctl enable twolife.service
 systemctl restart twolife.service
+systemctl enable --now twolife-backup.timer
 
 echo "==> 配置 Nginx..."
 cat > /etc/nginx/sites-available/twolife <<NGINX
@@ -156,3 +240,5 @@ certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" --redirec
 echo "部署完成: https://$DOMAIN"
 echo "应用目录: $APP_DIR"
 echo "服务状态: systemctl status twolife"
+echo "备份定时器: systemctl status twolife-backup.timer"
+echo "手动备份: /usr/local/bin/twolife_backup.sh"
