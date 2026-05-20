@@ -55,7 +55,7 @@ fi
 echo "==> 安装依赖..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y curl nginx certbot python3-certbot-nginx build-essential
+apt-get install -y --no-install-recommends curl nginx certbot python3-certbot-nginx build-essential
 
 if ! command -v node >/dev/null 2>&1; then
   echo "==> 安装 Node.js 20.x ..."
@@ -71,6 +71,8 @@ if [[ ! -f "$APP_DIR/package.json" ]]; then
 fi
 
 cd "$APP_DIR"
+mkdir -p "$APP_DIR/uploads"
+chmod 775 "$APP_DIR/uploads"
 
 echo "==> 安装并构建项目..."
 npm install
@@ -111,6 +113,7 @@ cat > /etc/nginx/sites-available/twolife <<NGINX
 server {
     listen 80;
     server_name $DOMAIN;
+    client_max_body_size 20M;
 
     location / {
         proxy_pass http://127.0.0.1:$APP_PORT;
