@@ -74,7 +74,6 @@ export function Login() {
           </form>
         </CardContent>
         <CardFooter className="justify-center pt-2 pb-6 text-sm text-neutral-500">
-          提示：使用 admin / 123456
         </CardFooter>
       </Card>
     </div>
