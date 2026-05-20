@@ -9,8 +9,8 @@ import { Heart } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function Login() {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('123456');
+  const [username, setUsername] = useState('gaoyisai');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 

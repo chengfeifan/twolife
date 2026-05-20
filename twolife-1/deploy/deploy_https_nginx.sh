@@ -64,11 +64,13 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 mkdir -p "$APP_DIR"
+SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ ! -f "$APP_DIR/package.json" ]]; then
   echo "==> 首次部署：复制当前项目到 $APP_DIR"
-  SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-  rsync -a --delete --exclude node_modules --exclude dist "$SRC_DIR/" "$APP_DIR/"
+else
+  echo "==> 增量部署：同步最新代码到 $APP_DIR"
 fi
+rsync -a --delete --exclude node_modules --exclude dist "$SRC_DIR/" "$APP_DIR/"
 
 cd "$APP_DIR"
 mkdir -p "$APP_DIR/uploads"
@@ -94,6 +96,7 @@ Type=simple
 WorkingDirectory=$APP_DIR
 Environment=NODE_ENV=$NODE_ENV
 Environment=PORT=$APP_PORT
+Environment=MAX_UPLOAD_MB=20
 EnvironmentFile=$APP_DIR/.env
 ExecStart=/usr/bin/node $APP_DIR/dist/server.cjs
 Restart=always
@@ -125,6 +128,19 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
+    }
+
+    location /api/upload {
+        proxy_pass http://127.0.0.1:$APP_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_request_buffering off;
+        proxy_read_timeout 120s;
     }
 }
 NGINX

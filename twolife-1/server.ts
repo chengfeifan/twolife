@@ -12,6 +12,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'my_super_secret_jwt_key_that_shoul
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT || 3000);
+  const maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 20);
+  const maxUploadBytes = maxUploadMb * 1024 * 1024;
 
   app.use(express.json());
 
@@ -20,7 +22,11 @@ async function startServer() {
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
-  fs.chmodSync(uploadDir, 0o775);
+  try {
+    fs.chmodSync(uploadDir, 0o775);
+  } catch (err) {
+    console.warn(`Unable to chmod upload dir: ${uploadDir}`);
+  }
   fs.accessSync(uploadDir, fs.constants.W_OK);
   
   // Serve uploads statically
@@ -38,7 +44,7 @@ async function startServer() {
   });
   const upload = multer({
     storage,
-    limits: { fileSize: 15 * 1024 * 1024 },
+    limits: { fileSize: maxUploadBytes },
   });
 
   // Middleware to authenticate JWT
@@ -194,7 +200,7 @@ async function startServer() {
   app.use((err: any, req: any, res: any, next: any) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(413).json({ error: '文件过大，请上传 15MB 以内的图片' });
+        return res.status(413).json({ error: `文件过大，请上传 ${maxUploadMb}MB 以内的图片` });
       }
       return res.status(400).json({ error: err.message });
     }
