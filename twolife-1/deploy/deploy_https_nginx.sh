@@ -70,11 +70,23 @@ if [[ ! -f "$APP_DIR/package.json" ]]; then
 else
   echo "==> 增量部署：同步最新代码到 $APP_DIR"
 fi
-rsync -a --delete --exclude node_modules --exclude dist "$SRC_DIR/" "$APP_DIR/"
+rsync -a --delete \
+  --exclude node_modules \
+  --exclude dist \
+  --exclude uploads \
+  --exclude database.sqlite \
+  --exclude database.sqlite-shm \
+  --exclude database.sqlite-wal \
+  --exclude .env \
+  "$SRC_DIR/" "$APP_DIR/"
 
 cd "$APP_DIR"
 mkdir -p "$APP_DIR/uploads"
 chmod 775 "$APP_DIR/uploads"
+
+if [[ -f "$APP_DIR/database.sqlite" ]]; then
+  echo "==> 检测到现有数据库，已保留历史数据"
+fi
 
 echo "==> 安装并构建项目..."
 npm install
