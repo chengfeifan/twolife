@@ -12,6 +12,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useEffect } from 'react';
+import { useState } from 'react';
+import { Menu, X } from 'lucide-react';
 
 const NAV_ITEMS = [
   { name: '首页', path: '/dashboard', icon: LayoutDashboard },
@@ -24,6 +26,7 @@ const NAV_ITEMS = [
 
 export function Layout() {
   const location = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const { data: user } = useQuery({
     queryKey: ['me'],
@@ -48,10 +51,27 @@ export function Layout() {
     window.location.href = '/login';
   };
 
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
   return (
     <div className="flex h-screen w-full bg-background text-foreground font-sans overflow-hidden">
+      <button
+        className="md:hidden fixed top-4 left-4 z-50 rounded-xl border border-border bg-white/95 p-2 shadow-sm"
+        onClick={() => setSidebarOpen((v) => !v)}
+        aria-label={sidebarOpen ? '关闭导航' : '打开导航'}
+      >
+        {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+      </button>
+
+      {sidebarOpen && <div className="md:hidden fixed inset-0 bg-black/30 z-30" onClick={() => setSidebarOpen(false)} />}
+
       {/* Sidebar Navigation */}
-      <aside className="w-64 border-r border-border bg-white flex flex-col">
+      <aside className={cn(
+        "w-64 border-r border-border bg-white flex flex-col fixed md:static inset-y-0 left-0 z-40 transition-transform duration-200",
+        sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
         <div className="p-8 pb-4">
           <div className="text-2xl font-serif italic text-primary font-bold tracking-tight">TwoLife</div>
           <div className="text-[10px] uppercase tracking-[0.1em] text-[#B4A096] mt-1">时光记录</div>
@@ -104,7 +124,7 @@ export function Layout() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col overflow-y-auto">
+      <main className="flex-1 flex flex-col overflow-y-auto w-full">
         <Outlet />
       </main>
     </div>

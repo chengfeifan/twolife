@@ -87,4 +87,16 @@ db.exec(`
   );
 `);
 
+const ensureSettingsColumn = (columnName: string, definition: string) => {
+  const columns = db.prepare("PRAGMA table_info(settings)").all() as Array<{ name: string }>;
+  const exists = columns.some((column) => column.name === columnName);
+  if (!exists) {
+    db.exec(`ALTER TABLE settings ADD COLUMN ${columnName} ${definition}`);
+  }
+};
+
+ensureSettingsColumn('about_title', "TEXT DEFAULT 'TwoLife 双人宇宙'");
+ensureSettingsColumn('about_subtitle', "TEXT DEFAULT '版本号 1.0.0'");
+ensureSettingsColumn('about_description', "TEXT DEFAULT '一个私密的二人数字空间，用来珍藏关于时间、照片和文字的美好记忆。'");
+
 export default db;

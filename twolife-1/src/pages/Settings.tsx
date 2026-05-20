@@ -50,6 +50,17 @@ export function Settings() {
     }
   });
 
+  const aboutMutation = useMutation({
+    mutationFn: (payload: { about_title: string; about_subtitle: string; about_description: string }) => api.request('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('关于信息已更新');
+    }
+  });
+
   const addUserMutation = useMutation({
     mutationFn: (data: any) => api.request('/users', {
       method: 'POST',
@@ -89,6 +100,16 @@ export function Settings() {
   };
 
   const isAdmin = user?.role === 'owner' || user?.role === 'admin';
+
+  const handleUpdateAbout = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    aboutMutation.mutate({
+      about_title: String(formData.get('about_title') || ''),
+      about_subtitle: String(formData.get('about_subtitle') || ''),
+      about_description: String(formData.get('about_description') || ''),
+    });
+  };
 
   return (
     <div className="p-8 max-w-4xl mx-auto pb-20">
@@ -207,15 +228,41 @@ export function Settings() {
                 </div>
                 
                 <div className="relative z-10">
-                  <h3 className="text-2xl font-bold text-foreground font-serif mb-1">TwoLife 双人宇宙</h3>
-                  <p className="text-sm font-bold uppercase tracking-widest text-[#B4A096]">版本号 1.0.0</p>
+                  <h3 className="text-2xl font-bold text-foreground font-serif mb-1">{settings?.about_title || 'TwoLife 双人宇宙'}</h3>
+                  <p className="text-sm font-bold uppercase tracking-widest text-[#B4A096]">{settings?.about_subtitle || '版本号 1.0.0'}</p>
                 </div>
                 
                 <p className="relative z-10 text-sm leading-relaxed max-w-lg">
-                   一个私密的二人数字空间，用来珍藏关于时间、照片和文字的美好记忆。
+                   {settings?.about_description || '一个私密的二人数字空间，用来珍藏关于时间、照片和文字的美好记忆。'}
                 </p>
              </CardContent>
            </Card>
+
+           {isAdmin && (
+             <Card className="border-border rounded-[2rem] mt-4">
+               <CardHeader>
+                 <CardTitle className="text-lg">编辑关于信息</CardTitle>
+                 <CardDescription>这里的内容会显示在“关于”卡片中。</CardDescription>
+               </CardHeader>
+               <CardContent>
+                 <form onSubmit={handleUpdateAbout} className="space-y-4">
+                   <div className="space-y-2">
+                     <Label>标题</Label>
+                     <Input name="about_title" defaultValue={settings?.about_title || 'TwoLife 双人宇宙'} required />
+                   </div>
+                   <div className="space-y-2">
+                     <Label>副标题</Label>
+                     <Input name="about_subtitle" defaultValue={settings?.about_subtitle || '版本号 1.0.0'} required />
+                   </div>
+                   <div className="space-y-2">
+                     <Label>描述</Label>
+                     <Input name="about_description" defaultValue={settings?.about_description || '一个私密的二人数字空间，用来珍藏关于时间、照片和文字的美好记忆。'} required />
+                   </div>
+                   <Button type="submit" disabled={aboutMutation.isPending}>保存关于信息</Button>
+                 </form>
+               </CardContent>
+             </Card>
+           )}
         </section>
       </div>
     </div>

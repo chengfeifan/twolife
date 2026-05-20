@@ -16,10 +16,12 @@ async function startServer() {
   app.use(express.json());
 
   // Setup upload directory
-  const uploadDir = path.join(process.cwd(), 'uploads');
+  const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
+  fs.chmodSync(uploadDir, 0o775);
+  fs.accessSync(uploadDir, fs.constants.W_OK);
   
   // Serve uploads statically
   app.use('/uploads', express.static(uploadDir));
@@ -34,7 +36,10 @@ async function startServer() {
       cb(null, file.fieldname + '-' + uniqueSuffix + ext);
     }
   });
-  const upload = multer({ storage });
+  const upload = multer({
+    storage,
+    limits: { fileSize: 15 * 1024 * 1024 },
+  });
 
   // Middleware to authenticate JWT
   const authenticateToken = (req: any, res: any, next: any) => {
@@ -113,15 +118,27 @@ async function startServer() {
     if (req.user.role !== 'owner' && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    const { theme_color } = req.body;
+    const { theme_color, about_title, about_subtitle, about_description } = req.body;
     try {
       let settings = db.prepare('SELECT * FROM settings LIMIT 1').get();
       if (!settings) {
-        db.prepare('INSERT INTO settings (theme_color) VALUES (?)').run(theme_color);
+        db.prepare('INSERT INTO settings (theme_color, about_title, about_subtitle, about_description) VALUES (?, ?, ?, ?)').run(
+          theme_color || 'pink',
+          about_title || 'TwoLife 双人宇宙',
+          about_subtitle || '版本号 1.0.0',
+          about_description || '一个私密的二人数字空间，用来珍藏关于时间、照片和文字的美好记忆。'
+        );
       } else {
-        db.prepare('UPDATE settings SET theme_color = ? WHERE id = ?').run(theme_color, (settings as any).id);
+        db.prepare(
+          `UPDATE settings
+           SET theme_color = COALESCE(?, theme_color),
+               about_title = COALESCE(?, about_title),
+               about_subtitle = COALESCE(?, about_subtitle),
+               about_description = COALESCE(?, about_description)
+           WHERE id = ?`
+        ).run(theme_color, about_title, about_subtitle, about_description, (settings as any).id);
       }
-      res.json({ success: true, theme_color });
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -172,6 +189,19 @@ async function startServer() {
   app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     res.json({ file_url: `/uploads/${req.file.filename}` });
+  });
+
+  app.use((err: any, req: any, res: any, next: any) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: '文件过大，请上传 15MB 以内的图片' });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    if (err) {
+      return res.status(500).json({ error: err.message || '服务器错误' });
+    }
+    next();
   });
 
   // Timeline
