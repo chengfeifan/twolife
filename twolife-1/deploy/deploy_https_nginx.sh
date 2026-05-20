@@ -64,11 +64,13 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 mkdir -p "$APP_DIR"
+SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ ! -f "$APP_DIR/package.json" ]]; then
   echo "==> 首次部署：复制当前项目到 $APP_DIR"
-  SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-  rsync -a --delete --exclude node_modules --exclude dist "$SRC_DIR/" "$APP_DIR/"
+else
+  echo "==> 增量部署：同步最新代码到 $APP_DIR"
 fi
+rsync -a --delete --exclude node_modules --exclude dist "$SRC_DIR/" "$APP_DIR/"
 
 cd "$APP_DIR"
 mkdir -p "$APP_DIR/uploads"
