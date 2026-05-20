@@ -11,7 +11,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'my_super_secret_jwt_key_that_shoul
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
   app.use(express.json());
 
