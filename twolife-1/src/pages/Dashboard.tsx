@@ -9,6 +9,7 @@ export function Dashboard() {
   const { data: annivs } = useQuery({ queryKey: ['anniversaries'], queryFn: () => api.request('/anniversaries') });
   const { data: timeline } = useQuery({ queryKey: ['timeline'], queryFn: () => api.request('/timeline') });
   const { data: posts } = useQuery({ queryKey: ['posts'], queryFn: () => api.request('/posts') });
+  const { data: photos } = useQuery({ queryKey: ['photos'], queryFn: () => api.request('/photos') });
 
   const firstMeetDateStr = annivs?.[0]?.date || '2023-05-20';
   const meetingPlace = annivs?.[0]?.title || 'we met';
@@ -77,19 +78,24 @@ export function Dashboard() {
               <Link to="/photos" className="text-xs text-primary font-medium hover:underline">查看全部</Link>
             </div>
             <div className="grid grid-cols-2 gap-3 flex-1 min-h-[220px]">
-              <div className="aspect-square bg-muted rounded-2xl overflow-hidden border border-border">
-                <div className="w-full h-full bg-[#E8D8C3]/40 flex items-center justify-center text-xs text-muted-foreground font-medium">海滨小憩</div>
-              </div>
-              <div className="aspect-square bg-muted rounded-2xl overflow-hidden border border-border">
-                <div className="w-full h-full bg-[#A7C5BD]/40 flex items-center justify-center text-xs text-muted-foreground font-medium">雨天漫步</div>
-              </div>
-              <div className="aspect-square bg-muted rounded-2xl overflow-hidden border border-border">
-                <div className="w-full h-full bg-primary/20 flex items-center justify-center text-xs text-muted-foreground font-medium">下厨之夜</div>
-              </div>
-              <Link to="/photos" className="aspect-square bg-muted/30 rounded-2xl border border-border border-dashed flex flex-col items-center justify-center text-[#B4A096] hover:bg-muted/50 transition-colors">
-                <CalendarHeart className="w-6 h-6 mb-2" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">添加更多</span>
-              </Link>
+              {photos
+                ?.slice()
+                .sort((a: any, b: any) => new Date(b.created_at || b.taken_date).getTime() - new Date(a.created_at || a.taken_date).getTime())
+                .slice(0, 4)
+                .map((photo: any) => (
+                  <Link key={photo.id} to="/photos" className="aspect-square bg-muted rounded-2xl overflow-hidden border border-border group relative">
+                    <img src={photo.image_url} alt={photo.title || '回忆照片'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent text-white">
+                      <p className="text-xs font-medium truncate">{photo.title || '未命名回忆'}</p>
+                    </div>
+                  </Link>
+                ))}
+
+              {(!photos || photos.length === 0) && (
+                <div className="col-span-2 rounded-2xl border border-dashed border-border bg-muted/20 flex items-center justify-center text-sm text-muted-foreground">
+                  还没有上传照片，去相册添加第一张回忆吧。
+                </div>
+              )}
             </div>
           </div>
         </div>
