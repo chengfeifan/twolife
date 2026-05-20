@@ -63,7 +63,7 @@ export function Photos() {
       });
       setFileUrl(res.file_url);
     } catch (err: any) {
-      toast.error('上传失败');
+      toast.error(err?.message || '上传失败，请检查登录状态、文件大小或服务器上传配置');
     } finally {
       setUploading(false);
     }
