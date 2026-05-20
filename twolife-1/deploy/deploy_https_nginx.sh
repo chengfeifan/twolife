@@ -55,7 +55,7 @@ fi
 echo "==> 安装依赖..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y curl nginx certbot python3-certbot-nginx build-essential
+apt-get install -y --no-install-recommends curl nginx certbot python3-certbot-nginx build-essential
 
 if ! command -v node >/dev/null 2>&1; then
   echo "==> 安装 Node.js 20.x ..."
