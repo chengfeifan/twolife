@@ -233,36 +233,10 @@ export function Settings() {
                 </div>
                 
                 <p className="relative z-10 text-sm leading-relaxed max-w-lg">
-                   {settings?.about_description || '一个私密的二人数字空间，用来珍藏关于时间、照片和文字的美好记忆。'}
+                   {settings?.about_description || '程非凡和高一赛的二人数字空间，用来珍藏关于时间、照片和文字的美好记忆。'}
                 </p>
              </CardContent>
            </Card>
-
-           {isAdmin && (
-             <Card className="border-border rounded-[2rem] mt-4">
-               <CardHeader>
-                 <CardTitle className="text-lg">编辑关于信息</CardTitle>
-                 <CardDescription>这里的内容会显示在“关于”卡片中。</CardDescription>
-               </CardHeader>
-               <CardContent>
-                 <form onSubmit={handleUpdateAbout} className="space-y-4">
-                   <div className="space-y-2">
-                     <Label>标题</Label>
-                     <Input name="about_title" defaultValue={settings?.about_title || 'TwoLife 双人宇宙'} required />
-                   </div>
-                   <div className="space-y-2">
-                     <Label>副标题</Label>
-                     <Input name="about_subtitle" defaultValue={settings?.about_subtitle || '版本号 1.0.0'} required />
-                   </div>
-                   <div className="space-y-2">
-                     <Label>描述</Label>
-                     <Input name="about_description" defaultValue={settings?.about_description || '一个私密的二人数字空间，用来珍藏关于时间、照片和文字的美好记忆。'} required />
-                   </div>
-                   <Button type="submit" disabled={aboutMutation.isPending}>保存关于信息</Button>
-                 </form>
-               </CardContent>
-             </Card>
-           )}
         </section>
       </div>
     </div>
