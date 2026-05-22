@@ -85,6 +85,19 @@ db.exec(`
     theme_color TEXT DEFAULT 'pink',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    target_type TEXT NOT NULL,
+    target_id INTEGER NOT NULL,
+    parent_id INTEGER,
+    content TEXT NOT NULL,
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(parent_id) REFERENCES comments(id),
+    FOREIGN KEY(created_by) REFERENCES users(id)
+  );
 `);
 
 const ensureSettingsColumn = (columnName: string, definition: string) => {

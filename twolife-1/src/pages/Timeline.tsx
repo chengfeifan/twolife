@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Plus, MapPin, Smile, MoreVertical, Trash2, Edit2 } from 'lucide-react';
+import { Plus, MapPin, Smile, Trash2, Edit2, Image as ImageIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -15,6 +15,8 @@ export function Timeline() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editItem, setEditItem] = useState<any>(null);
+  const [fileUrl, setFileUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
   
   const { data: events, isLoading } = useQuery({ queryKey: ['timeline'], queryFn: () => api.request('/timeline') });
 
@@ -54,6 +56,7 @@ export function Timeline() {
       event_date: formData.get('event_date') || new Date().toISOString(),
       location: formData.get('location'),
       mood: formData.get('mood'),
+      cover_image_url: fileUrl || editItem?.cover_image_url,
     };
     if (editItem) {
       updateMutation.mutate({ id: editItem.id, payload });
@@ -81,6 +84,16 @@ export function Timeline() {
               <DialogTitle>{editItem ? '编辑回忆' : '新回忆'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="border border-dashed border-border rounded-[2rem] p-6 text-center bg-background relative overflow-hidden group">
+                <input type="file" accept="image/*" onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setUploading(true);
+                  const fd = new FormData(); fd.append('file', file);
+                  try { const res = await api.request('/upload', { method: 'POST', body: fd }); setFileUrl(res.file_url); } finally { setUploading(false); }
+                }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                {(fileUrl || editItem?.cover_image_url) ? <img src={fileUrl || editItem?.cover_image_url} className="absolute inset-0 w-full h-full object-cover rounded-[2rem]" /> : <div className="flex items-center justify-center gap-2"><ImageIcon className="w-5 h-5" />{uploading ? '上传中...' : '上传时间线图片（可选）'}</div>}
+              </div>
               <div className="space-y-2">
                 <Label>标题</Label>
                 <Input name="title" defaultValue={editItem?.title} placeholder="发生了什么？" required />
@@ -103,7 +116,7 @@ export function Timeline() {
                   <Input name="mood" defaultValue={editItem?.mood} placeholder="例如：开心" />
                 </div>
               </div>
-              <Button type="submit" className="w-full" disabled={mutation.isPending || updateMutation.isPending}>
+              <Button type="submit" className="w-full" disabled={mutation.isPending || updateMutation.isPending || uploading}>
                 保存回忆
               </Button>
             </form>
@@ -159,6 +172,7 @@ export function Timeline() {
                   <p className="text-muted-foreground mb-4 whitespace-pre-wrap">{event.description}</p>
                 )}
 
+                {event.cover_image_url && <img src={event.cover_image_url} className="rounded-2xl mb-4 w-full" />}
                 {(event.location || event.mood) && (
                   <div className="flex gap-4 pt-4 border-t border-border text-xs font-bold text-muted-foreground">
                     {event.location && (
