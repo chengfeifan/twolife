@@ -18,6 +18,7 @@ export function Photos() {
   const [fileUrl, setFileUrl] = useState('');
   const [editItem, setEditItem] = useState<any>(null);
   const [viewPhoto, setViewPhoto] = useState<any>(null);
+  const [zoomed, setZoomed] = useState(false);
 
   const { data: photos, isLoading } = useQuery({ queryKey: ['photos'], queryFn: () => api.request('/photos') });
 
@@ -145,7 +146,7 @@ export function Photos() {
 
       <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
         {photos?.map((photo: any) => (
-          <div key={photo.id} className="break-inside-avoid relative group rounded-[2rem] overflow-hidden shadow-sm border border-border cursor-zoom-in" onClick={() => setViewPhoto(photo)}>
+          <div key={photo.id} className="break-inside-avoid relative group rounded-[2rem] overflow-hidden shadow-sm border border-border cursor-zoom-in" onClick={() => { setViewPhoto(photo); setZoomed(false); }}>
             <img src={photo.image_url} alt={photo.title || 'Photo'} className="w-full object-cover transition-transform duration-500 group-hover:scale-105" />
             <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
               <Button 
@@ -183,14 +184,21 @@ export function Photos() {
       </div>
       
 
-      <Dialog open={!!viewPhoto} onOpenChange={(v) => !v && setViewPhoto(null)}>
-        <DialogContent className="max-w-5xl">
+      <Dialog open={!!viewPhoto} onOpenChange={(v) => { if (!v) { setViewPhoto(null); setZoomed(false); } }}>
+        <DialogContent className="w-screen h-screen max-w-none rounded-none p-0 overflow-hidden border-0">
           {viewPhoto && (
-            <div className="grid md:grid-cols-3 gap-6">
-              <div className="md:col-span-2"><img src={viewPhoto.image_url} className="w-full rounded-2xl" /></div>
-              <div>
-                <h3 className="text-xl font-bold">{viewPhoto.title || '未命名照片'}</h3>
+            <div className="grid md:grid-cols-5 h-full">
+              <div className="md:col-span-3 bg-black/90 flex items-center justify-center p-6">
+                <img
+                  src={viewPhoto.image_url}
+                  className={`rounded-2xl object-contain transition-transform duration-300 cursor-zoom-in ${zoomed ? 'scale-200' : 'scale-100'} max-h-[92vh]`}
+                  onClick={() => setZoomed((v) => !v)}
+                />
+              </div>
+              <div className="md:col-span-2 p-6 md:p-8 bg-gradient-to-b from-background to-muted/30 overflow-y-auto">
+                <h3 className="text-2xl font-bold">{viewPhoto.title || '未命名照片'}</h3>
                 <p className="text-sm text-muted-foreground mt-2">{format(new Date(viewPhoto.taken_date || viewPhoto.created_at), 'yyyy年MM月dd日')}</p>
+                <p className="text-xs text-muted-foreground mt-2">点击图片可放大/缩小（2倍）</p>
                 <Comments targetType="photo" targetId={viewPhoto.id} />
               </div>
             </div>
