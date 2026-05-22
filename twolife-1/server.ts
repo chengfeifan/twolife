@@ -394,7 +394,7 @@ async function startServer() {
     if (!target_type || !target_id) return res.status(400).json({ error: 'target_type and target_id are required' });
     try {
       const comments = db.prepare(`
-        SELECT c.*, u.nickname as author_nickname
+        SELECT c.*, u.nickname as author_nickname, COALESCE(NULLIF(u.nickname, ''), u.username, '匿名') as author_display_name
         FROM comments c
         LEFT JOIN users u ON u.id = c.created_by
         WHERE c.target_type = ? AND c.target_id = ?
@@ -416,7 +416,7 @@ async function startServer() {
       `);
       const info = stmt.run(target_type, target_id, parent_id || null, content, req.user.id);
       const comment = db.prepare(`
-        SELECT c.*, u.nickname as author_nickname
+        SELECT c.*, u.nickname as author_nickname, COALESCE(NULLIF(u.nickname, ''), u.username, '匿名') as author_display_name
         FROM comments c
         LEFT JOIN users u ON u.id = c.created_by
         WHERE c.id = ?
@@ -488,7 +488,7 @@ async function startServer() {
     if (!target_type || !target_id) return res.status(400).json({ error: 'target_type and target_id are required' });
     try {
       const comments = db.prepare(`
-        SELECT c.*, u.nickname as author_nickname
+        SELECT c.*, u.nickname as author_nickname, COALESCE(NULLIF(u.nickname, ''), u.username, '匿名') as author_display_name
         FROM comments c
         LEFT JOIN users u ON u.id = c.created_by
         WHERE c.target_type = ? AND c.target_id = ?
@@ -510,7 +510,7 @@ async function startServer() {
       `);
       const info = stmt.run(target_type, target_id, parent_id || null, content, req.user.id);
       const comment = db.prepare(`
-        SELECT c.*, u.nickname as author_nickname
+        SELECT c.*, u.nickname as author_nickname, COALESCE(NULLIF(u.nickname, ''), u.username, '匿名') as author_display_name
         FROM comments c
         LEFT JOIN users u ON u.id = c.created_by
         WHERE c.id = ?
