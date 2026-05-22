@@ -185,13 +185,13 @@ export function Photos() {
       
 
       <Dialog open={!!viewPhoto} onOpenChange={(v) => { if (!v) { setViewPhoto(null); setZoomed(false); } }}>
-        <DialogContent className="max-w-7xl p-0 overflow-hidden">
+        <DialogContent className="w-screen h-screen max-w-none rounded-none p-0 overflow-hidden border-0">
           {viewPhoto && (
-            <div className="grid md:grid-cols-5 min-h-[70vh]">
+            <div className="grid md:grid-cols-5 h-full">
               <div className="md:col-span-3 bg-black/90 flex items-center justify-center p-6">
                 <img
                   src={viewPhoto.image_url}
-                  className={`rounded-2xl object-contain transition-transform duration-300 cursor-zoom-in ${zoomed ? 'scale-200' : 'scale-100'} max-h-[75vh]`}
+                  className={`rounded-2xl object-contain transition-transform duration-300 cursor-zoom-in ${zoomed ? 'scale-200' : 'scale-100'} max-h-[92vh]`}
                   onClick={() => setZoomed((v) => !v)}
                 />
               </div>
