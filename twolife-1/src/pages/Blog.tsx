@@ -129,6 +129,9 @@ export function Blog() {
                  <time className="text-[10px] font-bold uppercase tracking-widest text-[#B4A096] mt-4 block">
                    {format(new Date(post.created_at), 'yyyy年MM月dd日')}
                  </time>
+                 <div className="mt-6" onClick={(e) => e.stopPropagation()}>
+                   <Comments targetType="post" targetId={post.id} />
+                 </div>
               </CardContent>
             </Card>
           ))}
