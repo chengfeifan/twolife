@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { Comments } from '@/components/Comments';
 
 export function Photos() {
   const queryClient = useQueryClient();
@@ -16,6 +17,7 @@ export function Photos() {
   const [uploading, setUploading] = useState(false);
   const [fileUrl, setFileUrl] = useState('');
   const [editItem, setEditItem] = useState<any>(null);
+  const [viewPhoto, setViewPhoto] = useState<any>(null);
 
   const { data: photos, isLoading } = useQuery({ queryKey: ['photos'], queryFn: () => api.request('/photos') });
 
@@ -143,7 +145,7 @@ export function Photos() {
 
       <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
         {photos?.map((photo: any) => (
-          <div key={photo.id} className="break-inside-avoid relative group rounded-[2rem] overflow-hidden shadow-sm border border-border">
+          <div key={photo.id} className="break-inside-avoid relative group rounded-[2rem] overflow-hidden shadow-sm border border-border cursor-zoom-in" onClick={() => setViewPhoto(photo)}>
             <img src={photo.image_url} alt={photo.title || 'Photo'} className="w-full object-cover transition-transform duration-500 group-hover:scale-105" />
             <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
               <Button 
@@ -180,6 +182,22 @@ export function Photos() {
         ))}
       </div>
       
+
+      <Dialog open={!!viewPhoto} onOpenChange={(v) => !v && setViewPhoto(null)}>
+        <DialogContent className="max-w-5xl">
+          {viewPhoto && (
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="md:col-span-2"><img src={viewPhoto.image_url} className="w-full rounded-2xl" /></div>
+              <div>
+                <h3 className="text-xl font-bold">{viewPhoto.title || '未命名照片'}</h3>
+                <p className="text-sm text-muted-foreground mt-2">{format(new Date(viewPhoto.taken_date || viewPhoto.created_at), 'yyyy年MM月dd日')}</p>
+                <Comments targetType="photo" targetId={viewPhoto.id} />
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {!isLoading && photos?.length === 0 && (
          <div className="py-20 text-center text-muted-foreground flex flex-col items-center justify-center bg-card rounded-[2rem] border border-border mt-4">
             <ImageIcon className="w-16 h-16 mb-4 opacity-20" />

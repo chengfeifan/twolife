@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -11,12 +12,14 @@ import { Plus, Trash2, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import Markdown from 'react-markdown';
+import { Comments } from '@/components/Comments';
 
 export function Blog() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<any>(null);
   const [editItem, setEditItem] = useState<any>(null);
+  const navigate = useNavigate();
 
   const { data: posts, isLoading } = useQuery({ queryKey: ['posts'], queryFn: () => api.request('/posts') });
 
@@ -58,6 +61,7 @@ export function Blog() {
       title: formData.get('title'),
       summary: formData.get('summary'),
       content_markdown: formData.get('content_markdown'),
+      cover_image_url: formData.get('cover_image_url'),
       status: 'published'
     };
     if (editItem) {
@@ -96,6 +100,10 @@ export function Blog() {
                   <Input name="summary" defaultValue={editItem?.summary} placeholder="简短的介绍..." />
                 </div>
                 <div className="space-y-2">
+                  <Label>封面图片 URL（可选）</Label>
+                  <Input name="cover_image_url" defaultValue={editItem?.cover_image_url} placeholder="/uploads/xxx.jpg" />
+                </div>
+                <div className="space-y-2">
                   <Label>正文（支持 Markdown）</Label>
                   <Textarea name="content_markdown" defaultValue={editItem?.content_markdown} className="min-h-[300px] font-mono text-sm" placeholder="# Heading&#10;&#10;写点什么..." required />
                 </div>
@@ -113,6 +121,7 @@ export function Blog() {
                key={post.id} 
                className={`cursor-pointer transition-all border-border hover:border-primary/50 rounded-[2rem] ${selectedPost?.id === post.id ? 'ring-2 ring-primary ring-opacity-50' : ''}`}
                onClick={() => setSelectedPost(post)}
+               onDoubleClick={() => navigate(`/blog/${post.id}`)}
             >
               <CardContent className="p-8">
                  <h2 className="text-xl font-bold text-foreground font-serif">{post.title}</h2>
@@ -160,11 +169,13 @@ export function Blog() {
                </div>
             </div>
             <h2 className="text-3xl font-bold tracking-tight text-foreground font-serif mb-8">{selectedPost.title}</h2>
+            {selectedPost.cover_image_url && <img src={selectedPost.cover_image_url} className="w-full rounded-2xl mb-6" />}
             <div className="prose prose-neutral prose-p:text-muted-foreground max-w-none">
               <div className="markdown-body">
                 <Markdown>{selectedPost.content_markdown}</Markdown>
               </div>
             </div>
+            <Comments targetType="post" targetId={selectedPost.id} />
          </div>
       ) : (
         <div className="hidden md:flex w-[500px] lg:w-[600px] items-center justify-center border border-dashed border-border rounded-[2rem] bg-muted/20 text-muted-foreground font-medium">

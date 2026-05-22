@@ -12,6 +12,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Timeline } from './pages/Timeline';
 import { Photos } from './pages/Photos';
 import { Blog } from './pages/Blog';
+import { BlogPostDetail } from './pages/BlogPostDetail';
 import { Anniversaries } from './pages/Anniversaries';
 import { Settings } from './pages/Settings';
 
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="timeline" element={<Timeline />} />
             <Route path="photos" element={<Photos />} />
             <Route path="blog" element={<Blog />} />
+            <Route path="blog/:id" element={<BlogPostDetail />} />
             <Route path="anniversaries" element={<Anniversaries />} />
             <Route path="settings" element={<Settings />} />
           </Route>
