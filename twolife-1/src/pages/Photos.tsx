@@ -153,7 +153,8 @@ export function Photos() {
                 variant="secondary" 
                 size="icon" 
                 className="w-8 h-8 rounded-full bg-white/80 hover:bg-white text-black drop-shadow"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setEditItem(photo);
                   setOpen(true);
                 }}
@@ -164,7 +165,8 @@ export function Photos() {
                 variant="destructive" 
                 size="icon" 
                 className="w-8 h-8 rounded-full bg-red-500/80 hover:bg-red-500 drop-shadow"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   if (confirm('确认删除这张照片吗？')) {
                     deleteMutation.mutate(photo.id);
                   }
@@ -185,17 +187,17 @@ export function Photos() {
       
 
       <Dialog open={!!viewPhoto} onOpenChange={(v) => { if (!v) { setViewPhoto(null); setZoomed(false); } }}>
-        <DialogContent className="w-screen h-screen max-w-none rounded-none p-0 overflow-hidden border-0">
+        <DialogContent className="w-screen h-screen max-w-none rounded-none p-0 overflow-hidden border-0 md:w-[94vw] md:h-[90vh] md:rounded-2xl md:border md:max-w-7xl">
           {viewPhoto && (
-            <div className="grid md:grid-cols-5 h-full">
-              <div className="md:col-span-3 bg-black/90 flex items-center justify-center p-6">
+            <div className="grid grid-rows-[1fr_auto] md:grid-cols-5 md:grid-rows-1 h-full">
+              <div className="md:col-span-3 bg-black/90 flex items-center justify-center p-4 md:p-6 min-h-0 overflow-auto">
                 <img
                   src={viewPhoto.image_url}
                   className={`rounded-2xl object-contain transition-transform duration-300 cursor-zoom-in ${zoomed ? 'scale-200' : 'scale-100'} max-h-[92vh]`}
                   onClick={() => setZoomed((v) => !v)}
                 />
               </div>
-              <div className="md:col-span-2 p-6 md:p-8 bg-gradient-to-b from-background to-muted/30 overflow-y-auto">
+              <div className="md:col-span-2 p-4 md:p-8 bg-gradient-to-b from-background to-muted/30 overflow-y-auto">
                 <h3 className="text-2xl font-bold">{viewPhoto.title || '未命名照片'}</h3>
                 <p className="text-sm text-muted-foreground mt-2">{format(new Date(viewPhoto.taken_date || viewPhoto.created_at), 'yyyy年MM月dd日')}</p>
                 <p className="text-xs text-muted-foreground mt-2">点击图片可放大/缩小（2倍）</p>

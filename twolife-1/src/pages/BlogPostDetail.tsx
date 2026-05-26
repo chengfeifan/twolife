@@ -4,7 +4,6 @@ import { api } from '@/lib/api';
 import Markdown from 'react-markdown';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Comments } from '@/components/Comments';
 
 export function BlogPostDetail() {
   const { id } = useParams();
@@ -17,7 +16,6 @@ export function BlogPostDetail() {
       <p className="text-muted-foreground mb-6">{format(new Date(post.created_at), 'yyyy年MM月dd日')}</p>
       {post.cover_image_url && <img src={post.cover_image_url} className="w-full rounded-2xl mb-6" />}
       <div className="prose max-w-none"><Markdown>{post.content_markdown}</Markdown></div>
-      <Comments targetType="post" targetId={post.id} />
     </div>
   );
 }
