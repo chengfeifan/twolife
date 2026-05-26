@@ -394,7 +394,7 @@ async function startServer() {
     if (!target_type || !target_id) return res.status(400).json({ error: 'target_type and target_id are required' });
     try {
       const comments = db.prepare(`
-        SELECT c.*, u.nickname as author_nickname
+        SELECT c.*, u.nickname as author_nickname, COALESCE(NULLIF(u.nickname, ''), u.username, '匿名') as author_display_name
         FROM comments c
         LEFT JOIN users u ON u.id = c.created_by
         WHERE c.target_type = ? AND c.target_id = ?
@@ -408,15 +408,20 @@ async function startServer() {
 
   app.post('/api/comments', authenticateToken, (req: any, res) => {
     const { target_type, target_id, parent_id, content } = req.body;
-    if (!target_type || !target_id || !content) return res.status(400).json({ error: 'Missing required fields' });
+    const normalizedTargetId = Number(target_id);
+    const normalizedParentId = parent_id ? Number(parent_id) : null;
+    const normalizedContent = String(content || '').trim();
+    if (!target_type || !Number.isInteger(normalizedTargetId) || !normalizedContent) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
     try {
       const stmt = db.prepare(`
         INSERT INTO comments (target_type, target_id, parent_id, content, created_by)
         VALUES (?, ?, ?, ?, ?)
       `);
-      const info = stmt.run(target_type, target_id, parent_id || null, content, req.user.id);
+      const info = stmt.run(target_type, normalizedTargetId, normalizedParentId, normalizedContent, req.user.id);
       const comment = db.prepare(`
-        SELECT c.*, u.nickname as author_nickname
+        SELECT c.*, u.nickname as author_nickname, COALESCE(NULLIF(u.nickname, ''), u.username, '匿名') as author_display_name
         FROM comments c
         LEFT JOIN users u ON u.id = c.created_by
         WHERE c.id = ?
@@ -481,46 +486,6 @@ async function startServer() {
     const userId = db.prepare("SELECT id FROM users LIMIT 1").get() as any;
     const uid = userId.id;
     
-  
-  // Comments
-  app.get('/api/comments', authenticateToken, (req: any, res) => {
-    const { target_type, target_id } = req.query;
-    if (!target_type || !target_id) return res.status(400).json({ error: 'target_type and target_id are required' });
-    try {
-      const comments = db.prepare(`
-        SELECT c.*, u.nickname as author_nickname
-        FROM comments c
-        LEFT JOIN users u ON u.id = c.created_by
-        WHERE c.target_type = ? AND c.target_id = ?
-        ORDER BY c.created_at ASC
-      `).all(target_type, target_id);
-      res.json(comments);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.post('/api/comments', authenticateToken, (req: any, res) => {
-    const { target_type, target_id, parent_id, content } = req.body;
-    if (!target_type || !target_id || !content) return res.status(400).json({ error: 'Missing required fields' });
-    try {
-      const stmt = db.prepare(`
-        INSERT INTO comments (target_type, target_id, parent_id, content, created_by)
-        VALUES (?, ?, ?, ?, ?)
-      `);
-      const info = stmt.run(target_type, target_id, parent_id || null, content, req.user.id);
-      const comment = db.prepare(`
-        SELECT c.*, u.nickname as author_nickname
-        FROM comments c
-        LEFT JOIN users u ON u.id = c.created_by
-        WHERE c.id = ?
-      `).get(info.lastInsertRowid);
-      res.status(201).json(comment);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
   // Anniversaries
     db.prepare('INSERT INTO anniversaries (title, date, description) VALUES (?, ?, ?)')
       .run('First Meet', '2023-05-20', 'The day we met in Tokyo');

@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 export function Comments({ targetType, targetId }: { targetType: string; targetId: string | number }) {
   const queryClient = useQueryClient();
@@ -22,6 +23,9 @@ export function Comments({ targetType, targetId }: { targetType: string; targetI
       setContent('');
       setReplyingTo(null);
       queryClient.invalidateQueries({ queryKey: key });
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || '评论发送失败，请稍后重试');
     },
   });
 
@@ -52,7 +56,7 @@ export function Comments({ targetType, targetId }: { targetType: string; targetI
         {rootComments.map((comment: any) => (
           <div key={comment.id} className="rounded-2xl border border-border p-4">
             <div className="flex justify-between text-xs text-muted-foreground mb-2">
-              <span>{comment.author_nickname || '匿名'}</span>
+              <span>{comment.author_display_name || comment.author_nickname || '匿名'}</span>
               <span>{format(new Date(comment.created_at), 'yyyy-MM-dd HH:mm')}</span>
             </div>
             <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
@@ -60,7 +64,7 @@ export function Comments({ targetType, targetId }: { targetType: string; targetI
             {(repliesMap[comment.id] || []).map((reply: any) => (
               <div key={reply.id} className="mt-2 ml-4 rounded-xl bg-muted/40 p-3">
                 <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                  <span>{reply.author_nickname || '匿名'}</span>
+                  <span>{reply.author_display_name || reply.author_nickname || '匿名'}</span>
                   <span>{format(new Date(reply.created_at), 'yyyy-MM-dd HH:mm')}</span>
                 </div>
                 <p className="text-sm whitespace-pre-wrap">{reply.content}</p>

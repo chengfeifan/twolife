@@ -12,7 +12,6 @@ import { Plus, Trash2, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import Markdown from 'react-markdown';
-import { Comments } from '@/components/Comments';
 
 export function Blog() {
   const queryClient = useQueryClient();
@@ -175,7 +174,6 @@ export function Blog() {
                 <Markdown>{selectedPost.content_markdown}</Markdown>
               </div>
             </div>
-            <Comments targetType="post" targetId={selectedPost.id} />
          </div>
       ) : (
         <div className="hidden md:flex w-[500px] lg:w-[600px] items-center justify-center border border-dashed border-border rounded-[2rem] bg-muted/20 text-muted-foreground font-medium">
