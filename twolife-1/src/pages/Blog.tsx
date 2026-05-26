@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -12,7 +12,6 @@ import { Plus, Trash2, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import Markdown from 'react-markdown';
-import { Comments } from '@/components/Comments';
 
 export function Blog() {
   const queryClient = useQueryClient();
@@ -21,7 +20,7 @@ export function Blog() {
   const [editItem, setEditItem] = useState<any>(null);
   const navigate = useNavigate();
 
-  const { data: posts, isLoading } = useQuery({ queryKey: ['posts'], queryFn: () => api.request('/posts') });
+  const { data: posts = [], isLoading } = useQuery({ queryKey: ['posts'], queryFn: () => api.request('/posts') });
 
   const createMutation = useMutation({
     mutationFn: (newPost: any) => api.request('/posts', { method: 'POST', body: JSON.stringify(newPost) }),
@@ -71,6 +70,12 @@ export function Blog() {
     }
   };
 
+  useEffect(() => {
+    if (!selectedPost && posts.length > 0) {
+      setSelectedPost(posts[0]);
+    }
+  }, [posts, selectedPost]);
+
   return (
     <div className="p-8 max-w-5xl mx-auto flex flex-col md:flex-row gap-8 pb-20">
       <div className="flex-1">
@@ -116,7 +121,19 @@ export function Blog() {
         </div>
 
         <div className="space-y-6">
-          {posts?.map((post: any) => (
+          {isLoading && (
+            <div className="rounded-[2rem] border border-dashed border-border bg-muted/20 p-8 text-center text-muted-foreground">
+              日记加载中...
+            </div>
+          )}
+
+          {!isLoading && posts.length === 0 && (
+            <div className="rounded-[2rem] border border-dashed border-border bg-muted/20 p-8 text-center text-muted-foreground">
+              还没有日记，点击右上角“写点什么”开始记录吧。
+            </div>
+          )}
+
+          {posts.map((post: any) => (
             <Card 
                key={post.id} 
                className={`cursor-pointer transition-all border-border hover:border-primary/50 rounded-[2rem] ${selectedPost?.id === post.id ? 'ring-2 ring-primary ring-opacity-50' : ''}`}
@@ -175,7 +192,6 @@ export function Blog() {
                 <Markdown>{selectedPost.content_markdown}</Markdown>
               </div>
             </div>
-            <Comments targetType="post" targetId={selectedPost.id} />
          </div>
       ) : (
         <div className="hidden md:flex w-[500px] lg:w-[600px] items-center justify-center border border-dashed border-border rounded-[2rem] bg-muted/20 text-muted-foreground font-medium">

@@ -31,8 +31,13 @@ export const api = {
         localStorage.removeItem('user');
         window.location.href = '/login';
       }
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || 'API Request Failed');
+      const cloned = response.clone();
+      const data = await response.json().catch(() => null);
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+      const text = await cloned.text().catch(() => '');
+      throw new Error(text || `API Request Failed (${response.status})`);
     }
     
     return response.json();
