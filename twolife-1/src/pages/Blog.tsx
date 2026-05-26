@@ -12,6 +12,7 @@ import { Plus, Trash2, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import Markdown from 'react-markdown';
+import { Comments } from '@/components/Comments';
 
 export function Blog() {
   const queryClient = useQueryClient();
