@@ -389,7 +389,7 @@ async function startServer() {
 
 
   // Comments
-  app.get('/api/comments', authenticateToken, (req: any, res) => {
+  const listComments = (req: any, res: any) => {
     const { target_type, target_id } = req.query;
     if (!target_type || !target_id) return res.status(400).json({ error: 'target_type and target_id are required' });
     try {
@@ -404,9 +404,9 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
-  });
+  };
 
-  app.post('/api/comments', authenticateToken, (req: any, res) => {
+  const createComment = (req: any, res: any) => {
     const { target_type, target_id, parent_id, content } = req.body;
     const normalizedTargetId = Number(target_id);
     const normalizedParentId = parent_id ? Number(parent_id) : null;
@@ -430,7 +430,11 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
-  });
+  };
+
+  // Keep both /api/comments and /comments for compatibility across environments.
+  app.get(['/api/comments', '/comments'], authenticateToken, listComments);
+  app.post(['/api/comments', '/comments'], authenticateToken, createComment);
 
   // Anniversaries
   app.get('/api/anniversaries', authenticateToken, (req, res) => {
