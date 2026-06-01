@@ -197,6 +197,12 @@ async function startServer() {
     res.json({ file_url: `/uploads/${req.file.filename}` });
   });
 
+  app.post('/api/upload/multiple', authenticateToken, upload.array('files', 50), (req, res) => {
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
+    res.json({ file_urls: files.map((file) => `/uploads/${file.filename}`) });
+  });
+
   app.use((err: any, req: any, res: any, next: any) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
@@ -283,7 +289,15 @@ async function startServer() {
 
   app.get('/api/photos', authenticateToken, (req, res) => {
     try {
-      const photos = db.prepare('SELECT * FROM photos ORDER BY created_at DESC').all();
+      const photos = db.prepare(`
+        SELECT photos.*,
+               albums.name AS album_name,
+               albums.cover_image_url AS album_cover_image_url,
+               albums.created_at AS album_created_at
+        FROM photos
+        LEFT JOIN albums ON albums.id = photos.album_id
+        ORDER BY photos.created_at DESC, photos.id DESC
+      `).all();
       res.json(photos);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -291,13 +305,47 @@ async function startServer() {
   });
 
   app.post('/api/photos', authenticateToken, (req, res) => {
-    const { album_id, title, description, image_url, taken_date, location, is_favorite } = req.body;
+    const { album_id, album_name, title, description, image_url, taken_date, location, is_favorite, photos } = req.body;
     try {
-      const stmt = db.prepare(`
+      const insertPhoto = db.prepare(`
         INSERT INTO photos (album_id, title, description, image_url, taken_date, location, is_favorite)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
-      const info = stmt.run(album_id, title, description, image_url, taken_date, location, is_favorite ? 1 : 0);
+
+      if (Array.isArray(photos) && photos.length > 0) {
+        const coverImageUrl = photos[0].image_url;
+        const createAlbum = db.prepare('INSERT INTO albums (name, description, cover_image_url) VALUES (?, ?, ?)');
+        const albumInfo = createAlbum.run(album_name || title || '未命名相册', description, coverImageUrl);
+        const createdAlbumId = Number(albumInfo.lastInsertRowid);
+
+        const createPhotos = db.transaction(() => {
+          for (const photo of photos) {
+            insertPhoto.run(
+              createdAlbumId,
+              photo.title || title || '',
+              photo.description || description,
+              photo.image_url,
+              photo.taken_date || taken_date,
+              photo.location || location,
+              photo.is_favorite ? 1 : 0
+            );
+          }
+        });
+        createPhotos();
+
+        const createdPhotos = db.prepare('SELECT * FROM photos WHERE album_id = ? ORDER BY id ASC').all(createdAlbumId);
+        const album = db.prepare('SELECT * FROM albums WHERE id = ?').get(createdAlbumId);
+        return res.status(201).json({ album, photos: createdPhotos });
+      }
+
+      let targetAlbumId = album_id;
+      if (!targetAlbumId) {
+        const albumInfo = db.prepare('INSERT INTO albums (name, description, cover_image_url) VALUES (?, ?, ?)')
+          .run(album_name || title || '未命名相册', description, image_url);
+        targetAlbumId = Number(albumInfo.lastInsertRowid);
+      }
+
+      const info = insertPhoto.run(targetAlbumId, title, description, image_url, taken_date, location, is_favorite ? 1 : 0);
       const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(info.lastInsertRowid);
       res.status(201).json(photo);
     } catch (err: any) {
