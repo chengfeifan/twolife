@@ -40,7 +40,10 @@ db.exec(`
     name TEXT NOT NULL,
     description TEXT,
     cover_image_url TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(created_by) REFERENCES users(id)
   );
 
   CREATE TABLE IF NOT EXISTS photos (
@@ -49,11 +52,18 @@ db.exec(`
     title TEXT,
     description TEXT,
     image_url TEXT NOT NULL,
+    thumbnail_url TEXT,
+    original_filename TEXT,
+    mime_type TEXT,
+    file_size INTEGER,
+    width INTEGER,
+    height INTEGER,
     taken_date DATETIME,
     location TEXT,
     is_favorite BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(album_id) REFERENCES albums(id)
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(album_id) REFERENCES albums(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS blog_posts (
@@ -100,6 +110,15 @@ db.exec(`
   );
 `);
 
+
+const ensureColumn = (tableName: string, columnName: string, definition: string) => {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  const exists = columns.some((column) => column.name === columnName);
+  if (!exists) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
+};
+
 const ensureSettingsColumn = (columnName: string, definition: string) => {
   const columns = db.prepare("PRAGMA table_info(settings)").all() as Array<{ name: string }>;
   const exists = columns.some((column) => column.name === columnName);
@@ -111,5 +130,15 @@ const ensureSettingsColumn = (columnName: string, definition: string) => {
 ensureSettingsColumn('about_title', "TEXT DEFAULT 'TwoLife 双人宇宙'");
 ensureSettingsColumn('about_subtitle', "TEXT DEFAULT '版本号 1.0.0'");
 ensureSettingsColumn('about_description', "TEXT DEFAULT '一个私密的二人数字空间，用来珍藏关于时间、照片和文字的美好记忆。'");
+
+ensureColumn('albums', 'created_by', 'INTEGER');
+ensureColumn('albums', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+ensureColumn('photos', 'thumbnail_url', 'TEXT');
+ensureColumn('photos', 'original_filename', 'TEXT');
+ensureColumn('photos', 'mime_type', 'TEXT');
+ensureColumn('photos', 'file_size', 'INTEGER');
+ensureColumn('photos', 'width', 'INTEGER');
+ensureColumn('photos', 'height', 'INTEGER');
+ensureColumn('photos', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
 
 export default db;

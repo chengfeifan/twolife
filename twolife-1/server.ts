@@ -5,6 +5,7 @@ import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
+import crypto from 'crypto';
 import db from './server/db.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'my_super_secret_jwt_key_that_should_be_long';
@@ -28,6 +29,10 @@ async function startServer() {
     console.warn(`Unable to chmod upload dir: ${uploadDir}`);
   }
   fs.accessSync(uploadDir, fs.constants.W_OK);
+  const thumbnailDir = path.join(uploadDir, 'thumbnails');
+  if (!fs.existsSync(thumbnailDir)) {
+    fs.mkdirSync(thumbnailDir, { recursive: true });
+  }
   
   // Serve uploads statically
   app.use('/uploads', express.static(uploadDir));
@@ -42,10 +47,54 @@ async function startServer() {
       cb(null, file.fieldname + '-' + uniqueSuffix + ext);
     }
   });
+  const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+  const safeImageExt = (filename: string, mimeType = '') => {
+    const ext = path.extname(filename).toLowerCase();
+    if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) return ext;
+    if (mimeType === 'image/png') return '.png';
+    if (mimeType === 'image/webp') return '.webp';
+    if (mimeType === 'image/gif') return '.gif';
+    return '.jpg';
+  };
+  const uniqueUploadName = (file: Express.Multer.File) => `${file.fieldname}-${Date.now()}-${crypto.randomUUID()}${safeImageExt(file.originalname, file.mimetype)}`;
+
   const upload = multer({
     storage,
     limits: { fileSize: maxUploadBytes },
   });
+
+  const albumUpload = multer({
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => cb(null, uploadDir),
+      filename: (req, file, cb) => cb(null, uniqueUploadName(file)),
+    }),
+    limits: { fileSize: 10 * 1024 * 1024, files: 100 },
+  });
+
+  const isAllowedImage = (file: Express.Multer.File) => allowedImageMimeTypes.has(file.mimetype);
+  const fileUrl = (filePath: string) => `/uploads/${path.relative(uploadDir, filePath).split(path.sep).join('/')}`;
+  const unlinkIfExists = (url?: string | null) => {
+    if (!url || !url.startsWith('/uploads/')) return;
+    const target = path.resolve(uploadDir, url.replace(/^\/uploads\//, ''));
+    if (!target.startsWith(path.resolve(uploadDir))) return;
+    if (fs.existsSync(target)) fs.unlinkSync(target);
+  };
+  const createThumbnailForFile = (file: Express.Multer.File, providedThumbnail?: Express.Multer.File) => {
+    if (providedThumbnail && isAllowedImage(providedThumbnail)) {
+      const thumbName = `thumb-${path.basename(file.filename, path.extname(file.filename))}${safeImageExt(providedThumbnail.originalname, providedThumbnail.mimetype)}`;
+      const thumbPath = path.join(thumbnailDir, thumbName);
+      fs.renameSync(providedThumbnail.path, thumbPath);
+      return fileUrl(thumbPath);
+    }
+
+    // Fallback for environments without native image processing: keep a separate thumbnail asset
+    // slot so lists never need to request the original URL. The frontend sends real compressed
+    // thumbnails for album uploads, and legacy/generic uploads fall back to this copy.
+    const thumbName = `thumb-${path.basename(file.filename)}`;
+    const thumbPath = path.join(thumbnailDir, thumbName);
+    fs.copyFileSync(file.path, thumbPath);
+    return fileUrl(thumbPath);
+  };
 
   // Middleware to authenticate JWT
   const authenticateToken = (req: any, res: any, next: any) => {
@@ -266,20 +315,51 @@ async function startServer() {
   });
 
   // Photos & Albums
-  app.get('/api/albums', authenticateToken, (req, res) => {
+  const normalizePage = (value: any, fallback: number, max = 100) => {
+    const parsed = Number(value || fallback);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(1, Math.min(max, Math.floor(parsed)));
+  };
+  const albumOwnerWhere = (req: any) => 'created_by IS NULL OR created_by = ' + Number(req.user.id);
+
+  app.get('/api/albums', authenticateToken, (req: any, res) => {
     try {
-      const albums = db.prepare('SELECT * FROM albums ORDER BY created_at DESC').all();
-      res.json(albums);
+      const page = normalizePage(req.query.page, 1, 9999);
+      const pageSize = normalizePage(req.query.page_size, 24, 100);
+      const offset = (page - 1) * pageSize;
+      const where = albumOwnerWhere(req);
+      const total = (db.prepare(`SELECT COUNT(*) AS count FROM albums WHERE ${where}`).get() as any).count;
+      const albums = db.prepare(`
+        SELECT albums.*,
+               COUNT(photos.id) AS photo_count,
+               COALESCE(MAX(photos.updated_at), albums.updated_at, albums.created_at) AS last_photo_updated_at,
+               COALESCE(
+                 albums.cover_image_url,
+                 (SELECT p.thumbnail_url FROM photos p WHERE p.album_id = albums.id ORDER BY p.id ASC LIMIT 1),
+                 (SELECT p.image_url FROM photos p WHERE p.album_id = albums.id ORDER BY p.id ASC LIMIT 1)
+               ) AS cover_thumbnail_url
+        FROM albums
+        LEFT JOIN photos ON photos.album_id = albums.id
+        WHERE ${where}
+        GROUP BY albums.id
+        ORDER BY datetime(COALESCE(albums.updated_at, albums.created_at)) DESC, albums.id DESC
+        LIMIT ? OFFSET ?
+      `).all(pageSize, offset);
+      res.json({ items: albums, total, page, page_size: pageSize, total_pages: Math.ceil(total / pageSize) });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post('/api/albums', authenticateToken, (req, res) => {
-    const { name, description, cover_image_url } = req.body;
+  app.post('/api/albums', authenticateToken, (req: any, res) => {
+    const name = String(req.body.name || '').trim();
+    const description = String(req.body.description || '').trim();
+    if (!name) return res.status(400).json({ error: '相册名称不能为空' });
+    if (name.length > 50) return res.status(400).json({ error: '相册名称不能超过 50 个字符' });
     try {
-      const stmt = db.prepare('INSERT INTO albums (name, description, cover_image_url) VALUES (?, ?, ?)');
-      const info = stmt.run(name, description, cover_image_url);
+      const duplicate = db.prepare('SELECT id FROM albums WHERE created_by = ? AND lower(name) = lower(?)').get(req.user.id, name);
+      if (duplicate) return res.status(409).json({ error: '同一用户下相册名称不建议重复，请换一个名称' });
+      const info = db.prepare('INSERT INTO albums (name, description, created_by) VALUES (?, ?, ?)').run(name, description, req.user.id);
       const album = db.prepare('SELECT * FROM albums WHERE id = ?').get(info.lastInsertRowid);
       res.status(201).json(album);
     } catch (err: any) {
@@ -287,48 +367,149 @@ async function startServer() {
     }
   });
 
-  app.get('/api/photos', authenticateToken, (req, res) => {
+  app.put('/api/albums/:id', authenticateToken, (req: any, res) => {
+    const name = String(req.body.name || '').trim();
+    const description = String(req.body.description || '').trim();
+    if (!name) return res.status(400).json({ error: '相册名称不能为空' });
+    if (name.length > 50) return res.status(400).json({ error: '相册名称不能超过 50 个字符' });
     try {
-      const photos = db.prepare(`
-        SELECT photos.*,
-               albums.name AS album_name,
-               albums.cover_image_url AS album_cover_image_url,
-               albums.created_at AS album_created_at
-        FROM photos
-        LEFT JOIN albums ON albums.id = photos.album_id
-        ORDER BY photos.created_at DESC, photos.id DESC
-      `).all();
-      res.json(photos);
+      const album = db.prepare(`SELECT * FROM albums WHERE id = ? AND (${albumOwnerWhere(req)})`).get(req.params.id);
+      if (!album) return res.status(404).json({ error: '相册不存在' });
+      const duplicate = db.prepare('SELECT id FROM albums WHERE created_by = ? AND lower(name) = lower(?) AND id != ?').get(req.user.id, name, req.params.id);
+      if (duplicate) return res.status(409).json({ error: '同一用户下相册名称不建议重复，请换一个名称' });
+      db.prepare('UPDATE albums SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(name, description, req.params.id);
+      res.json(db.prepare('SELECT * FROM albums WHERE id = ?').get(req.params.id));
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post('/api/photos', authenticateToken, (req, res) => {
-    const { album_id, album_name, title, description, image_url, taken_date, location, is_favorite, photos } = req.body;
+  app.delete('/api/albums/:id', authenticateToken, (req: any, res) => {
+    try {
+      const album = db.prepare(`SELECT * FROM albums WHERE id = ? AND (${albumOwnerWhere(req)})`).get(req.params.id);
+      if (!album) return res.status(404).json({ error: '相册不存在' });
+      const photos = db.prepare('SELECT image_url, thumbnail_url FROM photos WHERE album_id = ?').all(req.params.id) as any[];
+      const removeAlbum = db.transaction(() => {
+        db.prepare('DELETE FROM photos WHERE album_id = ?').run(req.params.id);
+        db.prepare('DELETE FROM albums WHERE id = ?').run(req.params.id);
+      });
+      removeAlbum();
+      for (const photo of photos) {
+        unlinkIfExists(photo.image_url);
+        unlinkIfExists(photo.thumbnail_url);
+      }
+      res.json({ success: true, deleted_photos: photos.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/albums/:id/photos', authenticateToken, (req: any, res) => {
+    try {
+      const album = db.prepare(`SELECT * FROM albums WHERE id = ? AND (${albumOwnerWhere(req)})`).get(req.params.id);
+      if (!album) return res.status(404).json({ error: '相册不存在' });
+      const page = normalizePage(req.query.page, 1, 9999);
+      const pageSize = normalizePage(req.query.page_size, 30, 100);
+      const offset = (page - 1) * pageSize;
+      const total = (db.prepare('SELECT COUNT(*) AS count FROM photos WHERE album_id = ?').get(req.params.id) as any).count;
+      const photos = db.prepare(`
+        SELECT id, album_id, title, description, thumbnail_url, image_url, taken_date, location, is_favorite,
+               file_size, width, height, created_at, updated_at
+        FROM photos
+        WHERE album_id = ?
+        ORDER BY datetime(created_at) DESC, id DESC
+        LIMIT ? OFFSET ?
+      `).all(req.params.id, pageSize, offset);
+      res.json({ album, items: photos, total, page, page_size: pageSize, total_pages: Math.ceil(total / pageSize) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/photos', authenticateToken, (req: any, res) => {
+    try {
+      const page = normalizePage(req.query.page, 1, 9999);
+      const pageSize = normalizePage(req.query.page_size, 30, 100);
+      const offset = (page - 1) * pageSize;
+      const total = (db.prepare('SELECT COUNT(*) AS count FROM photos').get() as any).count;
+      const photos = db.prepare(`
+        SELECT photos.id, photos.album_id, photos.title, photos.description, photos.thumbnail_url, photos.image_url,
+               photos.taken_date, photos.location, photos.is_favorite, photos.file_size, photos.created_at, photos.updated_at,
+               albums.name AS album_name, albums.cover_image_url AS album_cover_image_url, albums.created_at AS album_created_at
+        FROM photos
+        LEFT JOIN albums ON albums.id = photos.album_id
+        ORDER BY photos.created_at DESC, photos.id DESC
+        LIMIT ? OFFSET ?
+      `).all(pageSize, offset);
+      res.json({ items: photos, total, page, page_size: pageSize, total_pages: Math.ceil(total / pageSize) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/photos/:id', authenticateToken, (req, res) => {
+    try {
+      const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
+      if (!photo) return res.status(404).json({ error: '照片不存在' });
+      res.json(photo);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/albums/:id/photos', authenticateToken, albumUpload.fields([{ name: 'files', maxCount: 50 }, { name: 'thumbnails', maxCount: 50 }]), (req: any, res) => {
+    try {
+      const album = db.prepare(`SELECT * FROM albums WHERE id = ? AND (${albumOwnerWhere(req)})`).get(req.params.id);
+      if (!album) return res.status(404).json({ error: '相册不存在' });
+      const files = ((req.files?.files || []) as Express.Multer.File[]);
+      const thumbnails = ((req.files?.thumbnails || []) as Express.Multer.File[]);
+      if (files.length === 0) return res.status(400).json({ error: '请选择要上传的图片' });
+      if (files.length > 50) return res.status(400).json({ error: '单次最多上传 50 张图片' });
+
+      const successes: any[] = [];
+      const failures: any[] = [];
+      const insertPhoto = db.prepare(`
+        INSERT INTO photos (album_id, title, image_url, thumbnail_url, original_filename, mime_type, file_size, taken_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        if (!isAllowedImage(file)) {
+          unlinkIfExists(fileUrl(file.path));
+          failures.push({ name: file.originalname, error: '仅支持 jpg、jpeg、png、webp、gif 图片格式' });
+          continue;
+        }
+        const thumbnailUrl = createThumbnailForFile(file, thumbnails[index]);
+        const imageUrl = fileUrl(file.path);
+        const info = insertPhoto.run(req.params.id, path.parse(file.originalname).name, imageUrl, thumbnailUrl, file.originalname, file.mimetype, file.size, req.body.taken_date || null);
+        successes.push(db.prepare('SELECT * FROM photos WHERE id = ?').get(info.lastInsertRowid));
+      }
+      if (successes.length > 0) {
+        const firstThumb = successes[0].thumbnail_url || successes[0].image_url;
+        db.prepare('UPDATE albums SET cover_image_url = COALESCE(cover_image_url, ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(firstThumb, req.params.id);
+      }
+      res.status(successes.length ? 201 : 400).json({ uploaded: successes, failures });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/photos', authenticateToken, (req: any, res) => {
+    const { album_id, album_name, title, description, image_url, thumbnail_url, taken_date, location, is_favorite, photos } = req.body;
     try {
       const insertPhoto = db.prepare(`
-        INSERT INTO photos (album_id, title, description, image_url, taken_date, location, is_favorite)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO photos (album_id, title, description, image_url, thumbnail_url, taken_date, location, is_favorite)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       if (Array.isArray(photos) && photos.length > 0) {
-        const coverImageUrl = photos[0].image_url;
-        const createAlbum = db.prepare('INSERT INTO albums (name, description, cover_image_url) VALUES (?, ?, ?)');
-        const albumInfo = createAlbum.run(album_name || title || '未命名相册', description, coverImageUrl);
+        const createAlbum = db.prepare('INSERT INTO albums (name, description, cover_image_url, created_by) VALUES (?, ?, ?, ?)');
+        const albumInfo = createAlbum.run(album_name || title || '未命名相册', description, photos[0].thumbnail_url || photos[0].image_url, req.user.id);
         const createdAlbumId = Number(albumInfo.lastInsertRowid);
 
         const createPhotos = db.transaction(() => {
           for (const photo of photos) {
-            insertPhoto.run(
-              createdAlbumId,
-              photo.title || title || '',
-              photo.description || description,
-              photo.image_url,
-              photo.taken_date || taken_date,
-              photo.location || location,
-              photo.is_favorite ? 1 : 0
-            );
+            insertPhoto.run(createdAlbumId, photo.title || title || '', photo.description || description, photo.image_url, photo.thumbnail_url || photo.image_url, photo.taken_date || taken_date, photo.location || location, photo.is_favorite ? 1 : 0);
           }
         });
         createPhotos();
@@ -340,12 +521,13 @@ async function startServer() {
 
       let targetAlbumId = album_id;
       if (!targetAlbumId) {
-        const albumInfo = db.prepare('INSERT INTO albums (name, description, cover_image_url) VALUES (?, ?, ?)')
-          .run(album_name || title || '未命名相册', description, image_url);
+        const albumInfo = db.prepare('INSERT INTO albums (name, description, cover_image_url, created_by) VALUES (?, ?, ?, ?)')
+          .run(album_name || title || '未命名相册', description, thumbnail_url || image_url, req.user.id);
         targetAlbumId = Number(albumInfo.lastInsertRowid);
       }
 
-      const info = insertPhoto.run(targetAlbumId, title, description, image_url, taken_date, location, is_favorite ? 1 : 0);
+      const info = insertPhoto.run(targetAlbumId, title, description, image_url, thumbnail_url || image_url, taken_date, location, is_favorite ? 1 : 0);
+      db.prepare('UPDATE albums SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(targetAlbumId);
       const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(info.lastInsertRowid);
       res.status(201).json(photo);
     } catch (err: any) {
@@ -354,13 +536,13 @@ async function startServer() {
   });
 
   app.put('/api/photos/:id', authenticateToken, (req, res) => {
-    const { album_id, title, description, image_url, taken_date, location, is_favorite } = req.body;
+    const { album_id, title, description, image_url, thumbnail_url, taken_date, location, is_favorite } = req.body;
     try {
       db.prepare(`
         UPDATE photos
-        SET album_id = ?, title = ?, description = ?, image_url = ?, taken_date = ?, location = ?, is_favorite = ?
+        SET album_id = ?, title = ?, description = ?, image_url = ?, thumbnail_url = ?, taken_date = ?, location = ?, is_favorite = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(album_id, title, description, image_url, taken_date, location, is_favorite ? 1 : 0, req.params.id);
+      `).run(album_id, title, description, image_url, thumbnail_url || image_url, taken_date, location, is_favorite ? 1 : 0, req.params.id);
       const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
       res.json(photo);
     } catch (err: any) {
@@ -370,8 +552,33 @@ async function startServer() {
 
   app.delete('/api/photos/:id', authenticateToken, (req, res) => {
     try {
-       db.prepare('DELETE FROM photos WHERE id = ?').run(req.params.id);
-       res.json({ success: true });
+      const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id) as any;
+      if (!photo) return res.status(404).json({ error: '照片不存在' });
+      db.prepare('DELETE FROM photos WHERE id = ?').run(req.params.id);
+      db.prepare('UPDATE albums SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(photo.album_id);
+      unlinkIfExists(photo.image_url);
+      unlinkIfExists(photo.thumbnail_url);
+      res.json({ success: true });
+    } catch(err: any) {
+       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/photos/bulk-delete', authenticateToken, (req, res) => {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+    if (ids.length === 0) return res.status(400).json({ error: '请选择要删除的照片' });
+    try {
+      const placeholders = ids.map(() => '?').join(',');
+      const photos = db.prepare(`SELECT * FROM photos WHERE id IN (${placeholders})`).all(...ids) as any[];
+      const deletePhotos = db.transaction(() => {
+        db.prepare(`DELETE FROM photos WHERE id IN (${placeholders})`).run(...ids);
+      });
+      deletePhotos();
+      for (const photo of photos) {
+        unlinkIfExists(photo.image_url);
+        unlinkIfExists(photo.thumbnail_url);
+      }
+      res.json({ success: true, deleted: photos.length });
     } catch(err: any) {
        res.status(500).json({ error: err.message });
     }
