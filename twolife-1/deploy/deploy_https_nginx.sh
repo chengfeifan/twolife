@@ -214,7 +214,7 @@ server {
         proxy_cache_bypass \$http_upgrade;
     }
 
-    location /api/upload {
+    location /api/ {
         proxy_pass http://127.0.0.1:$APP_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;

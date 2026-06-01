@@ -527,7 +527,7 @@ async function startServer() {
       }
 
       const info = insertPhoto.run(targetAlbumId, title, description, image_url, thumbnail_url || image_url, taken_date, location, is_favorite ? 1 : 0);
-      db.prepare('UPDATE albums SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(targetAlbumId);
+      db.prepare('UPDATE albums SET cover_image_url = COALESCE(cover_image_url, ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(thumbnail_url || image_url, targetAlbumId);
       const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(info.lastInsertRowid);
       res.status(201).json(photo);
     } catch (err: any) {
@@ -772,6 +772,20 @@ async function startServer() {
   };
   ensureUser('chengfeifan', 'Cheng Feifan', 'admin');
   ensureUser('gaoyisai', 'Gao Yisai', 'admin');
+
+  app.use((err: any, req: any, res: any, next: any) => {
+    if (res.headersSent) return next(err);
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: `文件过大，请上传 ${maxUploadMb}MB 以内的图片` });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    if (err) {
+      return res.status(500).json({ error: err.message || '服务器错误' });
+    }
+    next();
+  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

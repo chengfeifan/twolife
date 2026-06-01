@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, buildApiUrl } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -120,12 +120,20 @@ const resizeImage = async (file: File, maxWidth: number, quality: number, prefer
   return new File([blob], file.name.replace(/\.[^.]+$/, `.${ext}`), { type, lastModified: Date.now() });
 };
 
-const uploadWithProgress = (albumId: number, original: File, thumbnail: File, onProgress: (value: number) => void) => new Promise<any>((resolve, reject) => {
+class UploadRequestError extends Error {
+  status: number;
+  payload: any;
+
+  constructor(status: number, payload: any) {
+    super(payload?.error || `上传失败（${status}）`);
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
+const sendFormDataWithProgress = (endpoint: string, formData: FormData, onProgress: (value: number) => void) => new Promise<any>((resolve, reject) => {
   const xhr = new XMLHttpRequest();
-  const formData = new FormData();
-  formData.append('files', original);
-  formData.append('thumbnails', thumbnail);
-  xhr.open('POST', `/api/albums/${albumId}/photos`);
+  xhr.open('POST', buildApiUrl(endpoint));
   const token = api.getToken();
   if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
   xhr.upload.onprogress = (event) => {
@@ -135,11 +143,47 @@ const uploadWithProgress = (albumId: number, original: File, thumbnail: File, on
     let payload: any = null;
     try { payload = JSON.parse(xhr.responseText || '{}'); } catch { payload = {}; }
     if (xhr.status >= 200 && xhr.status < 300) resolve(payload);
-    else reject(new Error(payload?.error || `上传失败（${xhr.status}）`));
+    else reject(new UploadRequestError(xhr.status, payload));
   };
   xhr.onerror = () => reject(new Error('网络错误，上传失败'));
   xhr.send(formData);
 });
+
+const uploadSingleFile = (file: File, onProgress: (value: number) => void) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return sendFormDataWithProgress('/upload', formData, onProgress);
+};
+
+const uploadWithProgress = async (albumId: number, original: File, thumbnail: File, onProgress: (value: number) => void) => {
+  const formData = new FormData();
+  formData.append('files', original);
+  formData.append('thumbnails', thumbnail);
+
+  try {
+    return await sendFormDataWithProgress(`/albums/${albumId}/photos`, formData, onProgress);
+  } catch (err: any) {
+    const isMissingAlbumUploadRoute = err instanceof UploadRequestError && err.status === 404 && !err.payload?.error;
+    if (!isMissingAlbumUploadRoute) throw err;
+
+    // Backward-compatible fallback for deployments that have not exposed the
+    // album-specific multipart endpoint yet: use the generic upload endpoint,
+    // then create the photo record through the JSON photos API.
+    const originalResult = await uploadSingleFile(original, (progress) => onProgress(Math.min(70, Math.round(progress * 0.7))));
+    const thumbnailResult = await uploadSingleFile(thumbnail, (progress) => onProgress(70 + Math.round(progress * 0.2)));
+    const photo = await api.request('/photos', {
+      method: 'POST',
+      body: JSON.stringify({
+        album_id: albumId,
+        title: original.name.replace(/\.[^.]+$/, ''),
+        image_url: originalResult.file_url,
+        thumbnail_url: thumbnailResult.file_url || originalResult.file_url,
+      }),
+    });
+    onProgress(100);
+    return { uploaded: [photo], failures: [] };
+  }
+};
 
 async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
   let cursor = 0;
@@ -191,6 +235,16 @@ export function Photos() {
   const createAlbumMutation = useMutation({
     mutationFn: (payload: { name: string; description?: string }) => api.request('/albums', { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: (album) => {
+      setAlbumPage(1);
+      queryClient.setQueryData(['albums', 1], (data: any) => {
+        if (!data?.items || data.items.some((item: Album) => item.id === album.id)) return data;
+        return {
+          ...data,
+          items: [{ ...album, photo_count: 0, cover_thumbnail_url: null }, ...data.items].slice(0, data.page_size || 24),
+          total: (data.total || 0) + 1,
+          total_pages: Math.max(1, Math.ceil(((data.total || 0) + 1) / (data.page_size || 24))),
+        };
+      });
       queryClient.invalidateQueries({ queryKey: ['albums'] });
       setAlbumDialogOpen(false);
       setEditingAlbum(null);

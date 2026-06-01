@@ -1,3 +1,10 @@
+const API_PREFIX = '/api';
+
+export const buildApiUrl = (endpoint: string) => {
+  if (endpoint.startsWith('http')) return endpoint;
+  return `${API_PREFIX}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+};
+
 export const api = {
   getToken: () => localStorage.getItem('token'),
   
@@ -20,8 +27,7 @@ export const api = {
     }
 
     
-    // Auto prefix /api
-    const url = endpoint.startsWith('http') ? endpoint : `/api${endpoint}`;
+    const url = buildApiUrl(endpoint);
 
     const response = await fetch(url, { ...options, headers });
     
