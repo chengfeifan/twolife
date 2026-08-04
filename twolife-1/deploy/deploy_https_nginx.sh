@@ -102,13 +102,12 @@ fi
 echo "==> 配置自动备份..."
 mkdir -p "$BACKUP_DIR"
 
-cat > /usr/local/bin/twolife_backup.sh <<BACKUP
-#!/usr/bin/env bash
-set -euo pipefail
-
-APP_DIR="$APP_DIR"
-BACKUP_DIR="$BACKUP_DIR"
-RETENTION_DAYS="$BACKUP_RETENTION_DAYS"
+{
+  printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' ''
+  printf 'APP_DIR=%q\n' "$APP_DIR"
+  printf 'BACKUP_DIR=%q\n' "$BACKUP_DIR"
+  printf 'RETENTION_DAYS=%q\n' "$BACKUP_RETENTION_DAYS"
+  cat <<'BACKUP'
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 TMP_DIR="$(mktemp -d)"
 ARCHIVE_PATH="$BACKUP_DIR/twolife_backup_${TIMESTAMP}.tar.gz"
@@ -141,6 +140,7 @@ find "$BACKUP_DIR" -maxdepth 1 -type f -name 'twolife_backup_*.tar.gz' -mtime +"
 
 echo "Backup created: $ARCHIVE_PATH"
 BACKUP
+} > /usr/local/bin/twolife_backup.sh
 
 chmod +x /usr/local/bin/twolife_backup.sh
 
