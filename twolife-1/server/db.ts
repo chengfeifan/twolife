@@ -2,7 +2,7 @@ import sqlite3 from 'better-sqlite3';
 import path from 'path';
 
 // Using a file-based SQLite database
-const dbPath = path.resolve(process.cwd(), 'database.sqlite');
+const dbPath = path.resolve(process.env.DATABASE_PATH || path.join(process.cwd(), 'database.sqlite'));
 const db = new sqlite3(dbPath, { verbose: console.log });
 
 // Initialize database tables
@@ -132,13 +132,22 @@ ensureSettingsColumn('about_subtitle', "TEXT DEFAULT '版本号 1.0.0'");
 ensureSettingsColumn('about_description', "TEXT DEFAULT '一个私密的二人数字空间，用来珍藏关于时间、照片和文字的美好记忆。'");
 
 ensureColumn('albums', 'created_by', 'INTEGER');
-ensureColumn('albums', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+// SQLite does not allow ALTER TABLE ... ADD COLUMN with CURRENT_TIMESTAMP as
+// its default. Older TwoLife databases do not have these columns, so using the
+// table-creation definition here prevented the server from starting and made
+// both listing and creating albums unavailable after an upgrade. Add nullable
+// columns first, then backfill existing rows. New databases still receive the
+// defaults from CREATE TABLE above.
+ensureColumn('albums', 'updated_at', 'DATETIME');
 ensureColumn('photos', 'thumbnail_url', 'TEXT');
 ensureColumn('photos', 'original_filename', 'TEXT');
 ensureColumn('photos', 'mime_type', 'TEXT');
 ensureColumn('photos', 'file_size', 'INTEGER');
 ensureColumn('photos', 'width', 'INTEGER');
 ensureColumn('photos', 'height', 'INTEGER');
-ensureColumn('photos', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+ensureColumn('photos', 'updated_at', 'DATETIME');
+
+db.prepare('UPDATE albums SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP) WHERE updated_at IS NULL').run();
+db.prepare('UPDATE photos SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP) WHERE updated_at IS NULL').run();
 
 export default db;
