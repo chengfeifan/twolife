@@ -9,7 +9,17 @@ export function Dashboard() {
   const { data: annivs } = useQuery({ queryKey: ['anniversaries'], queryFn: () => api.request('/anniversaries') });
   const { data: timeline } = useQuery({ queryKey: ['timeline'], queryFn: () => api.request('/timeline') });
   const { data: posts } = useQuery({ queryKey: ['posts'], queryFn: () => api.request('/posts') });
-  const { data: photos } = useQuery({ queryKey: ['photos'], queryFn: () => api.request('/photos') });
+  const { data: photos = [] } = useQuery({
+    queryKey: ['dashboard-photos'],
+    queryFn: async () => {
+      const response = await api.request('/photos?page=1&page_size=4');
+
+      // Older servers returned an array while the paginated API returns an
+      // object. Normalize both shapes so an API response can never crash the
+      // dashboard after its initial render.
+      return Array.isArray(response) ? response : response?.items ?? [];
+    },
+  });
 
   const firstMeetDateStr = annivs?.[0]?.date || '2023-05-20';
   const meetingPlace = annivs?.[0]?.title || 'we met';
@@ -79,7 +89,7 @@ export function Dashboard() {
             </div>
             <div className="grid grid-cols-2 gap-3 flex-1 min-h-[220px]">
               {photos
-                ?.slice()
+                .slice()
                 .sort((a: any, b: any) => new Date(b.created_at || b.taken_date).getTime() - new Date(a.created_at || a.taken_date).getTime())
                 .slice(0, 4)
                 .map((photo: any) => (
@@ -91,7 +101,7 @@ export function Dashboard() {
                   </Link>
                 ))}
 
-              {(!photos || photos.length === 0) && (
+              {photos.length === 0 && (
                 <div className="col-span-2 rounded-2xl border border-dashed border-border bg-muted/20 flex items-center justify-center text-sm text-muted-foreground">
                   还没有上传照片，去相册添加第一张回忆吧。
                 </div>
